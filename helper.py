@@ -1,73 +1,52 @@
 import numpy as np
 import string
-import os
+import pandas as pd
+from keras.preprocessing.sequence import pad_sequences
 
-PATH = 'training_data_5151/'
-#
-# vocab = list(string.ascii_lowercase) + list(string.punctuation) + list(string.digits) + ['\n']
-#
-# vocab_size = len(vocab)
 char_limit = 1014
 
 
-def get_data():
-    text = []
+def get_data(path):
     labels = []
-    dir_list = os.listdir(PATH)
-    for i in dir_list:
-        if i == 'neg':
-            files = os.listdir(PATH+i+'/')
-            for j in files:
-                with open(PATH+i+'/'+j, encoding='utf-8') as f:
-                    text.append(f.read())
-                    labels.append([1,0,0])
-        if i == 'neu':
-            files = os.listdir(PATH+i+'/')
-            for j in files:
-                with open(PATH+i+'/'+j, encoding='utf-8') as f:
-                    text.append(f.read())
-                    labels.append([0,1,0])
-        if i == 'pos':
-            files = os.listdir(PATH+i+'/')
-            for j in files:
-                with open(PATH+i+'/'+j, encoding='utf-8') as f:
-                    text.append(f.read())
-                    labels.append([0,0,1])
-    return text, labels
+    input = []
+    df = pd.read_csv(path+'train.csv', names=['one','second','third'])
+    df = df.drop('second', axis=1)
+    data = df.values
+    for label,text in data:
+        input.append(text.lower())
+        if label == 1:
+            labels.append([1, 0, 0, 0])
+        elif label == 2:
+            labels.append([0, 1, 0, 0])
+        elif label == 3:
+            labels.append([0, 0, 1, 0])
+        else:
+            labels.append([0, 0, 0, 1])
+    return input, np.array(labels)
 
 
-text, labels = get_data()
-
-
-def create_vocab_set(text):
-    char2idx = {}
-    reverse_char2idx = {}
-    vocab = set()
-    for c in text:
-        for i in c:
-            vocab.add(i)
+def create_vocab_set():
+    vocab = list(string.ascii_lowercase) + list(string.punctuation) + list(string.digits) + ['\n', ' ']
     vocab_size = len(vocab)
+    word2idx = {}
     for i, c in enumerate(vocab):
-        char2idx[c] = i
-        reverse_char2idx[i] = c
-
-    return vocab, vocab_size, char2idx, reverse_char2idx
+        word2idx[c] = i
+    return vocab, vocab_size, word2idx
 
 
-def _encode_char(s, vocab_size, char2idx):
-    char_vec = []
-    for c in s[:char_limit]:
-        vec = np.zeros(vocab_size)
-        vec[char2idx[c]] = 1
-        char_vec.append(vec)
-    return np.array(char_vec)
+def _encode_text(s, word2idx):
+    vec = []
+    for i in s.split(' '):
+        vec.append(word2idx[i])
+    return np.array(vec)
 
 
-def get_encoded_text(text, vocab_size, char2idx):
+def get_encoded_text(text, word2idx, sent_limit):
     encoded_text = []
     for single_text in text:
-        encoded_text.append(_encode_char(single_text, vocab_size, char2idx))
-    return encoded_text
+        encoded_text.append(_encode_text(single_text, word2idx))
+    encoded_text = pad_sequences(encoded_text, maxlen=sent_limit, value=0.)
+    return np.array(encoded_text)
 
 
 def batch_gen(encoded_text, labels, batch_size):

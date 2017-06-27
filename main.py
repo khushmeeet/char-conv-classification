@@ -2,104 +2,138 @@ import tensorflow as tf
 import helper
 from sklearn.utils import shuffle
 
-char_limit = 1014
+
+sent_limit = 200
 n_classes = 3
 num_feature_map = 256
 nodes = 1024
 epochs = 10
+path = 'ag_news_csv/'
+split = 2900
+embedding_size = 300
 
-text, labels = helper.get_data()
-vocab, vocab_size, char2idx, reverse_char2idx = helper.create_vocab_set(text)
+input, labels = helper.get_data(path)
+vocab, vocab_size, word2idx = helper.create_vocab_set()
 
-text, labels = shuffle(text, labels)
-encoded_text = helper.get_encoded_text(text, vocab_size, char2idx)
-trainx , trainy, testx, testy = encoded_text[:3500], labels[:3500], encoded_text[:-3500], labels[:-3500]
-train = helper.batch_gen(trainx, trainy, batch_size=128)
-test = helper.batch_gen(testx, testy, batch_size=644)
+input, labels = shuffle(input, labels)
 
-x = tf.placeholder(dtype=tf.float32, shape=[None, char_limit, vocab_size])
+encoded_text = helper.get_encoded_text(input, word2idx, sent_limit=sent_limit)
+
+train_X, train_Y, test_X, test_Y = encoded_text[:split], labels[:split], encoded_text[:-split], labels[:-split]
+
+train = helper.batch_gen(train_X, train_Y, batch_size=128)
+test = helper.batch_gen(test_X, test_Y, batch_size=644)
+
+x = tf.placeholder(dtype=tf.float32, shape=[None, sent_limit])
 y = tf.placeholder(dtype=tf.float32, shape=[None, n_classes])
 prob = tf.placeholder(dtype=tf.float32)
 
-weights = {
-    'conv7x7': tf.Variable(tf.truncated_normal([vocab_size, 7, 1, num_feature_map])),
-    'conv3x3': tf.Variable(tf.truncated_normal([3, 3, num_feature_map])),
-    'full1': tf.Variable(tf.truncated_normal([34*3, nodes])),
-    'full2': tf.Variable(tf.truncated_normal([nodes, nodes])),
-    'full3': tf.Variable(tf.truncated_normal([nodes, n_classes]))
-}
-
-biases = {
-    'bias': tf.Variable(tf.truncated_normal([num_feature_map])),
-    'full12': tf.Variable(tf.truncated_normal([nodes])),
-    'full3': tf.Variable(tf.truncated_normal([n_classes]))
-}
-
-for ii,jj in train:
-    print(ii[0].shape)
-    print(jj)
-    break
+with tf.name_scope('embedding_layer'):
+    embed_w = tf.Variable(tf.truncated_normal([vocab_size, embedding_size], -1.0, 1.0), name='weight')
 
 # layer 1
-output = tf.nn.conv1d(x, weights['conv7x7'], stride=1, padding='VALID', name='conv1')
-output = tf.nn.bias_add(output, biases['bias'])
-output = tf.nn.relu(output)
+with tf.name_scope('layer1'):
+    conv_w = tf.Variable(tf.truncated_normal([7, 7, 1, num_feature_map]), name='weight')
+    l1_bias = tf.Variable(tf.truncated_normal([num_feature_map]), name='bias')
 
-output = tf.nn.max_pool(output, ksize=[1, 3, 3, 1], strides=1, padding='VALID', name='pool1')
+    output = tf.nn.conv2d(x, conv_w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
+    output = tf.nn.bias_add(output, l1_bias)
+    output = tf.nn.relu(output)
+    output = tf.nn.max_pool(output, ksize=[1, 3, 3, 1], strides=[1, 1, 1, 1], padding='VALID', name='pool')
 
 # layer 2
-output = tf.nn.conv1d(output, weights['conv7x7'], stride=1, padding='VALID', name='conv2')
-output = tf.nn.bias_add(output, biases['bias'])
-output = tf.nn.relu(output)
+with tf.name_scope('layer2'):
+    conv_w = tf.Variable(tf.truncated_normal([7, 7, num_feature_map, num_feature_map]), name='weight')
+    bias = tf.Variable(tf.truncated_normal([num_feature_map]), name='bias')
 
-output = tf.nn.max_pool(output, ksize=[1, 3, 3, 1], strides=1, padding='VALID', name='pool2')
+    output = tf.nn.conv2d(output, conv_w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
+    output = tf.nn.bias_add(output, bias)
+    output = tf.nn.relu(output)
+    output = tf.nn.max_pool(output, ksize=[1, 3, 3, 1], strides=[1, 1, 1, 1], padding='VALID', name='pool')
 
 # layer 3
-output = tf.nn.conv1d(output, weights['conv3x3'], stride=1, padding='VALID', name='conv3')
-output = tf.nn.bias_add(output, biases['bias'])
-output = tf.nn.relu(output)
+with tf.name_scope('layer3'):
+    conv_w = tf.Variable(tf.truncated_normal([3, 3, num_feature_map, num_feature_map]), name='weight')
+    bias = tf.Variable(tf.truncated_normal([num_feature_map]), name='bias')
+
+    output = tf.nn.conv2d(output, conv_w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
+    output = tf.nn.bias_add(output, bias)
+    output = tf.nn.relu(output)
 
 # layer 4
-output = tf.nn.conv1d(output, weights['conv3x3'], stride=1, padding='VALID', name='conv3')
-output = tf.nn.bias_add(output, biases['bias'])
-output = tf.nn.relu(output)
+with tf.name_scope('layer4'):
+    conv_w = tf.Variable(tf.truncated_normal([3, 3, num_feature_map, num_feature_map]), name='weight')
+    bias = tf.Variable(tf.truncated_normal([num_feature_map]), name='bias')
+
+    output = tf.nn.conv2d(output, conv_w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
+    output = tf.nn.bias_add(output, bias)
+    output = tf.nn.relu(output)
 
 # layer 5
-output = tf.nn.conv1d(output, weights['conv3x3'], stride=1, padding='VALID', name='conv3')
-output = tf.nn.bias_add(output, biases['bias'])
-output = tf.nn.relu(output)
+with tf.name_scope('layer5'):
+    conv_w = tf.Variable(tf.truncated_normal([3, 3, num_feature_map, num_feature_map]), name='weight')
+    bias = tf.Variable(tf.truncated_normal([num_feature_map]), name='bias')
+
+    output = tf.nn.conv2d(output, conv_w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
+    output = tf.nn.bias_add(output, bias)
+    output = tf.nn.relu(output)
 
 # layer 6
-output = tf.nn.conv1d(output, weights['conv7x7'], stride=1, padding='VALID', name='conv3')
-output = tf.nn.bias_add(output, biases['bias'])
-output = tf.nn.relu(output)
+with tf.name_scope('layer6'):
+    conv_w = tf.Variable(tf.truncated_normal([3, 3, num_feature_map, num_feature_map]), name='weight')
+    bias = tf.Variable(tf.truncated_normal([num_feature_map]), name='bias')
 
-output = tf.nn.max_pool(output, ksize=[1, 3, 3, 1], strides=1, padding='VALID', name='pool3')
+    output = tf.nn.conv2d(output, conv_w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
+    output = tf.nn.bias_add(output, bias)
+    output = tf.nn.relu(output)
+    output = tf.nn.max_pool(output, ksize=[1, 3, 3, 1], strides=[1, 1, 1, 1], padding='VALID', name='pool')
+
+num_features_total = 34 * num_feature_map
+output = tf.reshape(output, [-1, num_features_total], name='reshape')
 
 # layer 7
-output = tf.matmul(output, weights['full1']) + biases['full12']
-output = tf.nn.dropout(output, prob)
-# layer 8
-output = tf.matmul(output, weights['full2']) + biases['full12']
-output = tf.nn.dropout(output, prob)
-# layer 9
-output = tf.matmul(output, weights['full3']) + biases['full3']
+with tf.name_scope('layer7'):
+    w = tf.Variable(tf.truncated_normal([34*num_feature_map, nodes]), name='weight')
+    b = tf.Variable(tf.truncated_normal([nodes]), name='bias')
 
-logits = tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=output)
-cost = tf.reduce_mean(logits)
+    output = tf.matmul(output, w, name='matmul1') + b
+    output = tf.nn.dropout(output, prob)
+
+# layer 8
+with tf.name_scope('layer8'):
+    w = tf.Variable(tf.truncated_normal([nodes, nodes]), name='weight')
+    b = tf.Variable(tf.truncated_normal([nodes]), name='bias')
+
+    output = tf.matmul(output, w, name='matmul2') + b
+    output = tf.nn.dropout(output, prob)
+
+# layer 9
+with tf.name_scope('output_layer'):
+    w = tf.Variable(tf.truncated_normal([nodes, n_classes]), name='weight')
+    b = tf.Variable(tf.truncated_normal([n_classes]), name='bias')
+    output = tf.matmul(output, w, name='matmul3') + b
+
+with tf.name_scope('loss'):
+    logits = tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=output)
+    cost = tf.reduce_mean(logits)
+
 optimizer = tf.train.AdamOptimizer().minimize(cost)
 
-correct_pred = tf.equal(tf.argmax(output, 1), tf.argmax(y, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+with tf.name_scope('accuracy'):
+    correct_pred = tf.equal(tf.argmax(output, 1), tf.argmax(y, 1))
+    accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+
+print('Training on {} inputs with {} classes'.format(train_X.shape[0], len(labels[0])))
+print('Testing on {} cases'.format(test_X.shape[0]))
 
 step = 0
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
     for e in range(epochs):
         for xx, yy in train:
-            print(xx)
-            print(xx.shape)
-            loss, _, acc = sess.run([cost, optimizer, accuracy], feed_dict={x: xx, y:yy, prob:0.5})
+            print('start')
+            loss, _, acc = sess.run([cost, optimizer, accuracy], feed_dict={x:xx, y:yy, prob:0.5})
+            print('finish')
             print('Batch {}  -  Loss {}  -  Acc {}'.format(step, loss, acc))
             step += 1
     for xx, yy in test:
