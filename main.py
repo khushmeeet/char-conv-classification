@@ -1,42 +1,48 @@
 import tensorflow as tf
 import helper
 from sklearn.utils import shuffle
+import time
 
-
+# ----- Params -----
 sent_limit = 200
-n_classes = 3
+n_classes = 4
 num_feature_map = 256
 nodes = 1024
 epochs = 10
 path = 'ag_news_csv/'
-split = 2900
 embedding_size = 300
+batch_size = 128
 
-input, labels = helper.get_data(path)
-vocab, vocab_size, word2idx = helper.create_vocab_set()
+# ----- Getting the data -----
+train_X, train_Y = helper.get_data(path+'train.csv')
+test_X, test_Y = helper.get_data(path+'test.csv')
 
-input, labels = shuffle(input, labels)
+vocab, vocab_size, word2idx = helper.create_vocab_set(train_X)
 
-encoded_text = helper.get_encoded_text(input, word2idx, sent_limit=sent_limit)
+inputs, labels = shuffle(train_X, train_Y)
 
-train_X, train_Y, test_X, test_Y = encoded_text[:split], labels[:split], encoded_text[:-split], labels[:-split]
+encoded_text = helper.get_encoded_text(train_X, word2idx, sent_limit=sent_limit)
 
-train = helper.batch_gen(train_X, train_Y, batch_size=128)
-test = helper.batch_gen(test_X, test_Y, batch_size=644)
+# ----- Getting batch generator -----
+train = helper.batch_gen(encoded_text, labels, batch_size=batch_size)
+test = helper.batch_gen(test_X, test_Y, batch_size=batch_size)
 
-x = tf.placeholder(dtype=tf.float32, shape=[None, sent_limit])
-y = tf.placeholder(dtype=tf.float32, shape=[None, n_classes])
+# ----- Tensorflow Graph -----
+x = tf.placeholder(dtype=tf.int32, shape=[None, sent_limit], name='inputs')
+y = tf.placeholder(dtype=tf.float32, shape=[None, n_classes], name='labels')
 prob = tf.placeholder(dtype=tf.float32)
 
 with tf.name_scope('embedding_layer'):
     embed_w = tf.Variable(tf.truncated_normal([vocab_size, embedding_size], -1.0, 1.0), name='weight')
+    embedding = tf.nn.embedding_lookup(embed_w, x)
+    embedding = tf.expand_dims(embedding, -1)
 
 # layer 1
 with tf.name_scope('layer1'):
     conv_w = tf.Variable(tf.truncated_normal([7, 7, 1, num_feature_map]), name='weight')
     l1_bias = tf.Variable(tf.truncated_normal([num_feature_map]), name='bias')
 
-    output = tf.nn.conv2d(x, conv_w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
+    output = tf.nn.conv2d(embedding, conv_w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
     output = tf.nn.bias_add(output, l1_bias)
     output = tf.nn.relu(output)
     output = tf.nn.max_pool(output, ksize=[1, 3, 3, 1], strides=[1, 1, 1, 1], padding='VALID', name='pool')
@@ -123,19 +129,21 @@ with tf.name_scope('accuracy'):
     correct_pred = tf.equal(tf.argmax(output, 1), tf.argmax(y, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
-print('Training on {} inputs with {} classes'.format(train_X.shape[0], len(labels[0])))
-print('Testing on {} cases'.format(test_X.shape[0]))
+print('Training on {} inputs with {} classes'.format(len(train_X), len(labels[0])))
+print('Testing on {} cases'.format(len(test_X)))
 
 step = 0
+batches = len(train_X)/batch_size
+
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
     for e in range(epochs):
         for xx, yy in train:
-            print('start')
-            loss, _, acc = sess.run([cost, optimizer, accuracy], feed_dict={x:xx, y:yy, prob:0.5})
-            print('finish')
-            print('Batch {}  -  Loss {}  -  Acc {}'.format(step, loss, acc))
+            start = time.time()
+            loss, _, acc = sess.run([cost, optimizer, accuracy], feed_dict={x: xx, y: yy, prob: 0.5})
+            end = time.time()
+            print('Epoch {} [Step {} / {}]  -  Loss {}  -  Acc {}  -  Took {}'.format(e, step, batches, loss, acc, end-start))
             step += 1
     for xx, yy in test:
-        acc = sess.run(accuracy, feed_dict={x:xx, y:yy, prob:1.})
+        acc = sess.run(accuracy, feed_dict={x: xx, y: yy, prob:1.})
         print(acc)

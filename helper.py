@@ -8,12 +8,12 @@ char_limit = 1014
 
 def get_data(path):
     labels = []
-    input = []
-    df = pd.read_csv(path+'train.csv', names=['one','second','third'])
+    inputs = []
+    df = pd.read_csv(path, names=['one','second','third'])
     df = df.drop('second', axis=1)
     data = df.values
     for label,text in data:
-        input.append(text.lower())
+        inputs.append(text.lower())
         if label == 1:
             labels.append([1, 0, 0, 0])
         elif label == 2:
@@ -22,11 +22,14 @@ def get_data(path):
             labels.append([0, 0, 1, 0])
         else:
             labels.append([0, 0, 0, 1])
-    return input, np.array(labels)
+    return inputs, np.array(labels, dtype=np.float32)
 
 
-def create_vocab_set():
-    vocab = list(string.ascii_lowercase) + list(string.punctuation) + list(string.digits) + ['\n', ' ']
+def create_vocab_set(inputs):
+    vocab = set()
+    for i in inputs:
+        for j in i.split(' '):
+            vocab.add(j)
     vocab_size = len(vocab)
     word2idx = {}
     for i, c in enumerate(vocab):
